@@ -16,7 +16,7 @@ fi
 
 echo "Launching $NODES Multipass instances..."
 for i in $(seq 1 $NODES); do
-  NAME="node$i"
+  NAME="microk8s-node$i"
   echo "Launching $NAME..."
   multipass launch --name "$NAME" --cpus "$CPUS" --memory "$MEMORY" --disk "$DISK"
 done
@@ -43,28 +43,28 @@ echo "sysctl applied on $(hostname)"
 
 # Apply sysctl changes before installing MicroK8s
 for i in $(seq 1 $NODES); do
-  ensure_sysctl_on_node "node$i"
+  ensure_sysctl_on_node "microk8s-node$i"
 done
 
 echo "Installing MicroK8s on each node..."
 for i in $(seq 1 $NODES); do
-  NAME="node$i"
+  NAME="microk8s-node$i"
   echo "Installing MicroK8s on $NAME..."
   multipass exec "$NAME" -- sudo snap install microk8s --classic
   multipass exec "$NAME" -- sudo usermod -a -G microk8s ubuntu || true
 done
 
-echo "Waiting for node1 to be ready..."
-multipass exec node1 -- sudo microk8s status --wait-ready --timeout 300s || multipass exec node1 -- sudo microk8s status || true
+echo "Waiting for microk8s-node1 to be ready..."
+multipass exec microk8s-node1 -- sudo microk8s status --wait-ready --timeout 300s || multipass exec microk8s-node1 -- sudo microk8s status || true
 
-echo "Enabling HA clustering on node1..."
-multipass exec node1 -- sudo microk8s enable ha-cluster
+echo "Enabling HA clustering on microk8s-node1..."
+multipass exec microk8s-node1 -- sudo microk8s enable ha-cluster
 
 # Join other nodes
 for i in $(seq 2 $NODES); do
-  NAME="node$i"
-  echo "Getting join command for $NAME from node1..."
-  JOIN_CMD=$(multipass exec node1 -- sudo microk8s add-node | grep 'microk8s join' | head -n 1 || true)
+  NAME="microk8s-node$i"
+  echo "Getting join command for $NAME from microk8s-node1..."
+  JOIN_CMD=$(multipass exec microk8s-node1 -- sudo microk8s add-node | grep 'microk8s join' | head -n 1 || true)
   if [ -z "$JOIN_CMD" ]; then
     echo "Retrying join command fetch..."
     sleep 3
@@ -80,24 +80,24 @@ done
 
 echo "Exporting kubeconfig to $KUBECONFIG_PATH..."
 mkdir -p "$(dirname "$KUBECONFIG_PATH")"
-multipass exec node1 -- sudo microk8s config > "$KUBECONFIG_PATH"
+multipass exec microk8s-node1 -- sudo microk8s config > "$KUBECONFIG_PATH"
 chmod 600 "$KUBECONFIG_PATH"
 
 echo "Enabling DNS, Hostpath Storage, and Metrics Server on all nodes..."
 for i in $(seq 1 $NODES); do
-  multipass exec "node$i" -- sudo microk8s enable dns || true
-  multipass exec "node$i" -- sudo microk8s enable hostpath-storage || true
-  multipass exec "node$i" -- sudo microk8s enable metrics-server || true
+  multipass exec "microk8s-node$i" -- sudo microk8s enable dns || true
+  multipass exec "microk8s-node$i" -- sudo microk8s enable hostpath-storage || true
+  multipass exec "microk8s-node$i" -- sudo microk8s enable metrics-server || true
 done
 
 echo "Enabling CIS hardening on all nodes..."
 for i in $(seq 1 $NODES); do
-  multipass exec "node$i" -- sudo microk8s enable cis-hardening || true
+  multipass exec "microk8s-node$i" -- sudo microk8s enable cis-hardening || true
 done
 
 echo "Labeling nodes with control-plane role..."
 for i in $(seq 1 $NODES); do
-  NODE_NAME="node$i"
+  NODE_NAME="microk8s-node$i"
   kubectl --kubeconfig "$KUBECONFIG_PATH" label node "$NODE_NAME" node-role.kubernetes.io/control-plane=true --overwrite || true
 done
 
